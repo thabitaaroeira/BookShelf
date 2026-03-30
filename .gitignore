@@ -27,3 +27,6 @@ Thumbs.db
 
 # Books database (personal data)
 books.db
+
+# Uploaded images
+uploads/
