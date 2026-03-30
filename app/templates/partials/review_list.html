@@ -1,0 +1,54 @@
+<div class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Books Needing Review</h2>
+            <button hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML" class="modal-close">&times;</button>
+        </div>
+    
+    {% if books %}
+    <p class="summary">{{ books|length }} book(s) require review</p>
+    
+    <div class="review-list">
+        {% for book in books %}
+        <div class="review-item" id="review-{{ book.id }}">
+            <form hx-put="/books/{{ book.id }}" 
+                  hx-target="#review-{{ book.id }}"
+                  hx-swap="outerHTML"
+                  class="review-form">
+                <div class="form-group">
+                    <label>Title:</label>
+                    <input type="text" name="title" value="{{ book.title or '' }}" required>
+                </div>
+                <div class="form-group">
+                    <label>Author:</label>
+                    <input type="text" name="author" value="{{ book.author or '' }}" required>
+                </div>
+                <div class="form-group">
+                    <label>ISBN (optional):</label>
+                    <input type="text" name="isbn" value="{{ book.isbn or '' }}">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn btn-danger" 
+                            hx-delete="/books/{{ book.id }}"
+                            hx-target="#review-{{ book.id }}"
+                            hx-swap="outerHTML"
+                            hx-confirm="Delete this book?">
+                        Delete
+                    </button>
+                </div>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">All books have been reviewed!</p>
+    {% endif %}
+    
+    <div class="form-actions">
+        <button type="button" class="btn" hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML">
+            Close
+        </button>
+    </div>
+    </div>
+</div>

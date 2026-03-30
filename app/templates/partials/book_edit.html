@@ -1,0 +1,44 @@
+<div hx-swap-oob="innerHTML:#modal">
+    <div class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Book</h2>
+                <button hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML" class="modal-close">&times;</button>
+            </div>
+            <form hx-put="/books/{{ book.id }}" hx-target="#book-list" hx-swap="innerHTML">
+                <div class="form-group">
+                    <label for="title">Title *</label>
+                    <input type="text" id="title" name="title" value="{{ book.title }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="author">Author *</label>
+                    <input type="text" id="author" name="author" value="{{ book.author }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="isbn">ISBN</label>
+                    <input type="text" id="isbn" name="isbn" value="{{ book.isbn or '' }}">
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="read" name="read" {{ 'checked' if book.read else '' }}>
+                    <label for="read">I've read this book</label>
+                </div>
+                <div class="form-group">
+                    <label for="rating">Rating</label>
+                    <select id="rating" name="rating">
+                        <option value="">No rating</option>
+                        <option value="1" {{ 'selected' if book.rating == 1 else '' }}>★☆☆☆☆ (1)</option>
+                        <option value="2" {{ 'selected' if book.rating == 2 else '' }}>★★☆☆☆ (2)</option>
+                        <option value="3" {{ 'selected' if book.rating == 3 else '' }}>★★★☆☆ (3)</option>
+                        <option value="4" {{ 'selected' if book.rating == 4 else '' }}>★★★★☆ (4)</option>
+                        <option value="5" {{ 'selected' if book.rating == 5 else '' }}>★★★★★ (5)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="notes">Notes</label>
+                    <textarea id="notes" name="notes">{{ book.notes or '' }}</textarea>
+                </div>
+                <button type="submit" class="btn">Update Book</button>
+            </form>
+        </div>
+    </div>
+</div>

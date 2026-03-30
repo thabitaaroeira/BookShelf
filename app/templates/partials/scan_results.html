@@ -1,0 +1,62 @@
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% else %}
+<div class="scan-results">
+    <h3>Scan Results</h3>
+    <p class="summary">
+        <strong>{{ total }}</strong> images processed | 
+        <strong>{{ imported }}</strong> books imported
+    </p>
+    
+    {% if results %}
+    <div class="result-section success">
+        <h4>Successfully Scanned ({{ results|length }})</h4>
+        <ul class="book-list">
+            {% for book in results %}
+            <li class="book-item">
+                <span class="book-title">{{ book.title }}</span>
+                <span class="book-author">by {{ book.author }}</span>
+                {% if book.isbn %}
+                <span class="book-isbn">ISBN: {{ book.isbn }}</span>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    
+    {% if needs_review %}
+    <div class="result-section needs-review">
+        <h4>Needs Review ({{ needs_review|length }})</h4>
+        <ul class="book-list">
+            {% for book in needs_review %}
+            <li class="book-item">
+                <span class="book-title">{{ book.title or "Title not detected" }}</span>
+                <span class="book-author">by {{ book.author or "Author not detected" }}</span>
+                {% if book.raw_text %}
+                <details class="raw-text">
+                    <summary>Raw OCR text</summary>
+                    <pre>{{ book.raw_text }}</pre>
+                </details>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        <p class="review-note">
+            <a href="/books/review" hx-get="/books/review" hx-target="#modal" hx-swap="innerHTML">
+                Review incomplete entries
+            </a>
+        </p>
+    </div>
+    {% endif %}
+    
+    <div class="form-actions">
+        <button type="button" class="btn" hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML">
+            Close
+        </button>
+        <button type="button" class="btn btn-secondary" hx-get="/books" hx-target="#main-content" hx-swap="innerHTML">
+            View Library
+        </button>
+    </div>
+</div>
+{% endif %}

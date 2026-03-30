@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}BookShelf - Home{% endblock %}
+
+{% block content %}
+<header>
+    <h1>My BookShelf</h1>
+    <div class="header-actions">
+        <button class="btn btn-secondary" hx-get="/books/scan" hx-target="#modal" hx-swap="innerHTML">
+            Scan Books
+        </button>
+        <button class="btn" hx-get="/books/new" hx-target="#modal" hx-swap="innerHTML">
+            + Add Book
+        </button>
+    </div>
+</header>
+
+<div id="book-list">
+    {% include "partials/book_list.html" %}
+</div>
+
+<div id="modal"></div>
+
+{% endblock %}

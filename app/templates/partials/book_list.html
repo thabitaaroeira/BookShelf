@@ -1,0 +1,51 @@
+{% if books %}
+    {% for book in books %}
+    <div class="book-card {{ 'read' if book.read else 'unread' }}" id="book-{{ book.id }}">
+        <h3>{{ book.title }}</h3>
+        <p><strong>Author:</strong> {{ book.author }}</p>
+        {% if book.isbn %}
+        <p><strong>ISBN:</strong> {{ book.isbn }}</p>
+        {% endif %}
+        <p>
+            <span class="badge {{ '' if book.read else 'unread' }}">
+                {{ 'Read' if book.read else 'Unread' }}
+            </span>
+            {% if book.needs_review %}
+            <span class="badge" style="background: #f39c12;">
+                Needs Review
+            </span>
+            {% endif %}
+            {% if book.rating %}
+            <span class="rating">
+                {% for i in range(1, 6) %}
+                    <span class="star {{ 'filled' if i <= book.rating }}">★</span>
+                {% endfor %}
+            </span>
+            {% endif %}
+        </p>
+        {% if book.notes %}
+        <p><strong>Notes:</strong> {{ book.notes }}</p>
+        {% endif %}
+        <div class="actions">
+            <button class="btn btn-secondary" 
+                    hx-get="/books/{{ book.id }}/edit" 
+                    hx-target="#modal" 
+                    hx-swap="innerHTML">
+                Edit
+            </button>
+            <button class="btn btn-danger" 
+                    hx-delete="/books/{{ book.id }}" 
+                    hx-target="#book-{{ book.id }}"
+                    hx-swap="outerHTML"
+                    hx-confirm="Delete '{{ book.title }}'?">
+                Delete
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="empty-state">
+        <h2>No books yet</h2>
+        <p>Click "Add Book" to register your first book!</p>
+    </div>
+{% endif %}
