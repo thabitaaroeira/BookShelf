@@ -1,0 +1,292 @@
+# BookShelf API - HTTP Examples
+# Copy and paste into terminal or use with REST Client extension (VS Code)
+# Base URL: http://localhost:8000
+
+@base_url = http://localhost:8000
+@content_type = application/json
+
+###############################################################################
+# BOOKS API
+###############################################################################
+
+### Get all books
+GET {{base_url}}/api/books/
+Accept: application/json
+
+###
+
+### Get a single book by ID
+GET {{base_url}}/api/books/1
+Accept: application/json
+
+###
+
+### Create a new book (minimal)
+POST {{base_url}}/api/books/
+Content-Type: application/json
+
+{
+    "title": "The Pragmatic Programmer",
+    "author": "David Thomas"
+}
+
+###
+
+### Create a new book (full)
+POST {{base_url}}/api/books/
+Content-Type: application/json
+
+{
+    "title": "Clean Code",
+    "author": "Robert C. Martin",
+    "isbn": "9780132350884",
+    "read": true,
+    "rating": 5,
+    "notes": "Essential reading for any developer"
+}
+
+###
+
+### Create book with needs_review flag
+POST {{base_url}}/api/books/
+Content-Type: application/json
+
+{
+    "title": "Unknown Book",
+    "author": "Unknown Author",
+    "needs_review": true
+}
+
+###
+
+### Update a book (partial)
+PUT {{base_url}}/api/books/1
+Content-Type: application/json
+
+{
+    "title": "Updated Title",
+    "rating": 4
+}
+
+###
+
+### Update a book (full)
+PUT {{base_url}}/api/books/1
+Content-Type: application/json
+
+{
+    "title": "The Pragmatic Programmer",
+    "author": "David Thomas",
+    "isbn": "9780135957059",
+    "read": true,
+    "rating": 5,
+    "notes": "Updated notes"
+}
+
+###
+
+### Delete a book
+DELETE {{base_url}}/api/books/1
+
+###
+
+### Validation error - rating too high
+POST {{base_url}}/api/books/
+Content-Type: application/json
+
+{
+    "title": "Test",
+    "author": "Author",
+    "rating": 10
+}
+
+###
+
+### Validation error - rating too low
+POST {{base_url}}/api/books/
+Content-Type: application/json
+
+{
+    "title": "Test",
+    "author": "Author",
+    "rating": 0
+}
+
+
+###############################################################################
+# OCR SCAN API
+###############################################################################
+
+### Scan book spines from images (single image)
+# Replace /path/to/book.jpg with your actual image path
+# Note: This endpoint processes images and returns OCR results
+# Images should be JPG, PNG, BMP, or WebP format
+# Maximum file size: 10MB per image
+
+curl -X POST "{{base_url}}/api/books/scan" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "files=@/path/to/book-spine-1.jpg"
+
+###
+
+### Scan book spines from images (multiple images)
+curl -X POST "{{base_url}}/api/books/scan" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "files=@/path/to/book-spine-1.jpg" \
+  -F "files=@/path/to/book-spine-2.jpg" \
+  -F "files=@/path/to/book-spine-3.jpg"
+
+###
+
+### Scan with PNG images
+curl -X POST "{{base_url}}/api/books/scan" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "files=@/path/to/book-spine.png"
+
+
+###############################################################################
+# IMPORT API
+###############################################################################
+
+### Import books from OCR results
+# Use this after scanning to save books to the database
+POST {{base_url}}/api/books/import
+Content-Type: application/json
+
+[
+    {
+        "title": "Scanned Book Title",
+        "author": "Author Name",
+        "isbn": "9781234567890",
+        "needs_review": false
+    },
+    {
+        "title": "Another Book",
+        "author": "Another Author",
+        "needs_review": false
+    }
+]
+
+###
+
+### Import books - partial (skips invalid)
+# Books without both title and author will be skipped
+POST {{base_url}}/api/books/import
+Content-Type: application/json
+
+[
+    {
+        "title": "Valid Book",
+        "author": "Valid Author"
+    },
+    {
+        "title": "Missing Author Only"
+    },
+    {
+        "author": "Missing Title Only"
+    }
+]
+
+###
+
+### Import books needing review
+POST {{base_url}}/api/books/import
+Content-Type: application/json
+
+[
+    {
+        "title": "Book with Unclear Title",
+        "author": "Author?",
+        "needs_review": true,
+        "raw_text": "Book w1th unflear t1tle\nAuth0r??"
+    }
+]
+
+
+###############################################################################
+# REVIEW API
+###############################################################################
+
+### Get all books needing review
+GET {{base_url}}/api/books/review
+Accept: application/json
+
+###
+
+### Example: Mark book as reviewed (update)
+# First get the book ID from the review endpoint
+# Then update it to clear the needs_review flag
+PUT {{base_url}}/api/books/1
+Content-Type: application/json
+
+{
+    "title": "Corrected Title",
+    "author": "Corrected Author",
+    "needs_review": false
+}
+
+
+###############################################################################
+# WEB VIEWS (HTML)
+###############################################################################
+
+### Get books list page
+GET {{base_url}}/books/
+
+###
+
+### Get new book form
+GET {{base_url}}/books/new
+
+###
+
+### Get scan page
+GET {{base_url}}/books/scan
+
+###
+
+### Get review page
+GET {{base_url}}/books/review
+
+###
+
+### Get edit book form
+GET {{base_url}}/books/1/edit
+
+
+###############################################################################
+# USAGE EXAMPLES
+###############################################################################
+
+### Complete workflow: Scan and Import
+
+# Step 1: Scan images (get OCR results)
+# curl -X POST "{{base_url}}/api/books/scan" -F "files=@book.jpg"
+# Save the successful results
+
+# Step 2: Import the successful results
+# curl -X POST "{{base_url}}/api/books/import" \
+#   -H "Content-Type: application/json" \
+#   -d '[{"title": "...", "author": "...", "needs_review": false}]'
+
+# Step 3: Check for books needing review
+# curl "{{base_url}}/api/books/review"
+
+# Step 4: Review incomplete books
+# PUT {{base_url}}/api/books/{id} with corrected title/author
+
+
+### Complete workflow: Manual Entry
+
+# Step 1: Create book with needs_review=true if uncertain
+# curl -X POST "{{base_url}}/api/books/" \
+#   -H "Content-Type: application/json" \
+#   -d '{"title": "Book Title", "author": "?", "needs_review": true}'
+
+# Step 2: Later, when you have the info, update and clear flag
+# curl -X PUT "{{base_url}}/api/books/1" \
+#   -H "Content-Type: application/json" \
+#   -d '{"title": "Correct Title", "author": "Correct Author", "needs_review": false}'
