@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.database import get_db
-from app.models.book import Book
+from app.models.book import Book as BookModel
 from app.schemas.book import BookCreate, BookUpdate, Book, OcrResult, BatchScanResponse
 from app.services.ocr import OcrService
 from app.services.upload import save_multiple_uploads, UploadError
@@ -28,13 +28,13 @@ router = APIRouter(prefix="/api/books", tags=["books"])
 @router.get("/", response_model=List[Book])
 def list_books(db: Session = Depends(get_db)):
     """Get all books."""
-    return db.query(Book).all()
+    return db.query(BookModel).all()
 
 
 @router.get("/{book_id}", response_model=Book)
 def get_book(book_id: int, db: Session = Depends(get_db)):
     """Get a single book by ID."""
-    book = db.query(Book).filter(Book.id == book_id).first()
+    book = db.query(BookModel).filter(BookModel.id == book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return book
@@ -43,7 +43,7 @@ def get_book(book_id: int, db: Session = Depends(get_db)):
 @router.post("/", response_model=Book, status_code=status.HTTP_201_CREATED)
 def create_book(book_data: BookCreate, db: Session = Depends(get_db)):
     """Create a new book."""
-    book = Book(**book_data.model_dump())
+    book = BookModel(**book_data.model_dump())
     db.add(book)
     db.commit()
     db.refresh(book)
@@ -57,7 +57,7 @@ def update_book(
     db: Session = Depends(get_db)
 ):
     """Update an existing book."""
-    book = db.query(Book).filter(Book.id == book_id).first()
+    book = db.query(BookModel).filter(BookModel.id == book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     
@@ -72,7 +72,7 @@ def update_book(
 @router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_book(book_id: int, db: Session = Depends(get_db)):
     """Delete a book."""
-    book = db.query(Book).filter(Book.id == book_id).first()
+    book = db.query(BookModel).filter(BookModel.id == book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     db.delete(book)
@@ -119,7 +119,7 @@ def import_books(
     imported = []
     for book_data in books:
         if book_data.title and book_data.author:
-            book = Book(
+            book = BookModel(
                 title=book_data.title,
                 author=book_data.author,
                 isbn=book_data.isbn,
@@ -139,4 +139,4 @@ def import_books(
 @router.get("/review", response_model=List[Book])
 def get_books_needing_review(db: Session = Depends(get_db)):
     """Get all books that need manual review."""
-    return db.query(Book).filter(Book.needs_review == True).all()
+    return db.query(BookModel).filter(BookModel.needs_review == True).all()
