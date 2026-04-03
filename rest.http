@@ -1,8 +1,6 @@
 # BookShelf API - HTTP Examples
-# Copy and paste into terminal or use with REST Client extension (VS Code)
-# Base URL: http://localhost:8000
 
-@base_url = http://localhost:8000
+@base_url = http://127.0.0.1:8000
 @content_type = application/json
 
 ###############################################################################

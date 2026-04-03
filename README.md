@@ -24,9 +24,9 @@ uvicorn app.main:app --reload
 
 | URL | Description |
 |-----|-------------|
-| http://localhost:8000 | BookShelf web app |
-| http://localhost:8000/docs | Swagger API docs |
-| http://localhost:8000/redoc | ReDoc API docs |
+| <http://localhost:8000> | BookShelf web app |
+| <http://localhost:8000/docs> | Swagger API docs |
+| <http://localhost:8000/redoc> | ReDoc API docs |
 
 ## Features
 
@@ -46,6 +46,7 @@ pytest -v
 ```
 
 Run with coverage:
+
 ```bash
 pytest --cov=app --cov-report=term-missing
 ```
