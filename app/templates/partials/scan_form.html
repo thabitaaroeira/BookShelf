@@ -7,17 +7,24 @@
         <form hx-encoding="multipart/form-data" 
               hx-post="/books/scan" 
               hx-target="#scan-results"
-              hx-swap="innerHTML">
+              hx-swap="innerHTML"
+              hx-indicator="#scan-loading">
             <div class="form-group">
                 <label for="files">Select Images:</label>
                 <input type="file" id="files" name="files" multiple accept="image/*" required>
                 <small>Upload photos of book spines (JPG, PNG, BMP, WebP)</small>
             </div>
             <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Scan Books</button>
-                <button type="button" class="btn btn-secondary" hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML">Cancel</button>
+                <button type="submit" class="btn btn-primary" hx-disabled-elt>Scan Books</button>
             </div>
         </form>
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML">Cancel</button>
+        </div>
         <div id="scan-results"></div>
+        <div id="scan-loading" class="htmx-indicator">
+            <div class="loading-spinner"></div>
+            <p>Scanning images... This may take a moment.</p>
+        </div>
     </div>
 </div>

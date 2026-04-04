@@ -7,10 +7,13 @@ This module provides OCR functionality using EasyOCR to:
 - Handle errors gracefully and flag results needing review
 """
 
+import os
 import re
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import easyocr
 
