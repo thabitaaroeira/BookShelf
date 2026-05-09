@@ -28,6 +28,21 @@ uvicorn app.main:app --reload
 | <http://localhost:8000/docs> | Swagger API docs |
 | <http://localhost:8000/redoc> | ReDoc API docs |
 
+## Access from Other Devices
+
+To access the app from your phone or another device on the same network:
+
+1. Find your computer's local IP:
+   ```bash
+   ipconfig   # Windows
+   hostname -I  # Linux
+   ```
+2. Run the server on all interfaces:
+   ```bash
+   uvicorn app.main:app --reload --host 0.0.0.0
+   ```
+3. From the other device, open `http://<your-local-ip>:8000` (e.g., `http://192.168.15.24:8000`).
+
 ## Features
 
 - Add, edit, delete books
