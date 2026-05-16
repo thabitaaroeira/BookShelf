@@ -4,15 +4,20 @@
             <h2>Scan Book Spines</h2>
             <button hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML" class="modal-close">&times;</button>
         </div>
-        <form hx-encoding="multipart/form-data" 
+        <form id="scan-form" hx-encoding="multipart/form-data" 
               hx-post="/books/scan" 
               hx-target="#scan-results"
               hx-swap="innerHTML"
-              hx-indicator="#scan-loading">
+              hx-indicator="#scan-loading"
+              hx-request='{"timeout": 120000}'>
             <div class="form-group">
-                <label for="files">Select Images:</label>
-                <input type="file" id="files" name="files" multiple accept="image/*" required>
-                <small>Upload photos of book spines (JPG, PNG, BMP, WebP)</small>
+                <label>Take a photo:</label>
+                <input type="file" name="files" accept="image/*" capture="environment">
+            </div>
+            <div class="form-group">
+                <label>Or upload existing images:</label>
+                <input type="file" name="files" multiple accept="image/*">
+                <small>JPG, PNG, BMP, WebP</small>
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary" hx-disabled-elt>Scan Books</button>
@@ -26,5 +31,13 @@
             <div class="loading-spinner"></div>
             <p>Scanning images... This may take a moment.</p>
         </div>
+        <script>
+            htmx.on("htmx:afterRequest", function(evt) {
+                if (evt.detail.target.id === "scan-results" && evt.detail.failed) {
+                    document.getElementById("scan-results").innerHTML =
+                        "<div class=\"alert alert-error\">Request failed or timed out. Try again.</div>";
+                }
+            });
+        </script>
     </div>
 </div>

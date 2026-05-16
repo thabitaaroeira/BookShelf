@@ -8,6 +8,10 @@
         <strong>{{ imported }}</strong> books imported
     </p>
     
+    {% if not results and not needs_review %}
+    <div class="alert alert-error">No text could be read from the image. Try taking a clearer photo with better lighting.</div>
+    {% endif %}
+    
     {% if results %}
     <div class="result-section success">
         <h4>Successfully Scanned ({{ results|length }})</h4>
@@ -38,6 +42,8 @@
                     <summary>Raw OCR text</summary>
                     <pre>{{ book.raw_text }}</pre>
                 </details>
+                {% else %}
+                <p class="no-text">No text detected in this image.</p>
                 {% endif %}
             </li>
             {% endfor %}

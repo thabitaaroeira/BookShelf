@@ -15,6 +15,8 @@ from typing import Optional
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
+from PIL import Image
+
 import easyocr
 
 from app.schemas.book import OcrResult, BatchScanResponse
@@ -24,7 +26,7 @@ from app.services.upload import cleanup_files, Path
 logger = logging.getLogger(__name__)
 
 
-SUPPORTED_LANGUAGES = ['en']
+SUPPORTED_LANGUAGES = ['en', 'pt']
 
 
 @dataclass
@@ -72,6 +74,23 @@ class OcrService:
         return cls._reader
     
     @classmethod
+    def _resize_if_needed(cls, image_path: str) -> str:
+        """Resize large images to improve OCR performance."""
+        MAX_DIM = 1920
+        img = Image.open(image_path)
+        w, h = img.size
+        if max(w, h) <= MAX_DIM:
+            return image_path
+        ratio = MAX_DIM / max(w, h)
+        new_size = (int(w * ratio), int(h * ratio))
+        img = img.resize(new_size, Image.LANCZOS)
+        resized_path = image_path.rsplit(".", 1)
+        out_path = f"{resized_path[0]}_resized.{resized_path[1]}"
+        img.save(out_path)
+        logger.info(f"Resized {image_path} ({w}x{h}) -> {out_path} ({new_size[0]}x{new_size[1]})")
+        return out_path
+
+    @classmethod
     def process_image(cls, image_path: str) -> OcrResult:
         """
         Process a single image and extract book information.
@@ -82,24 +101,25 @@ class OcrService:
         Returns:
             OcrResult with extracted data and metadata
         """
+        processed_path = cls._resize_if_needed(image_path)
         reader = cls.get_reader()
         
         try:
-            results = reader.readtext(image_path)
+            results = reader.readtext(processed_path)
         except Exception as e:
             logger.error(f"OCR failed for {image_path}: {e}")
+            if processed_path != image_path:
+                os.unlink(processed_path)
             return OcrResult(
                 raw_text="",
                 needs_review=True,
                 image_path=image_path
             )
         
+        if processed_path != image_path:
+            os.unlink(processed_path)
+        
         if not results:
-            return OcrResult(
-                raw_text="",
-                needs_review=True,
-                image_path=image_path
-            )
         
         text_blocks = []
         raw_texts = []
@@ -208,7 +228,7 @@ class OcrService:
         if not texts:
             return None, None
         
-        author_indicators = ['by', 'written by', 'author:', 'author', '著', '-', '—', '–']
+        author_indicators = ['by', 'written by', 'author:', 'author', '著', 'por', 'de:', 'autor:', 'autoria:', '-', '—', '–']
         
         title = None
         author = None
