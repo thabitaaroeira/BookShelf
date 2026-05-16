@@ -17,7 +17,6 @@ from fastapi.staticfiles import StaticFiles
 from app.api import api_router
 from app.views import router as views_router
 from app.database import engine, Base
-from app.services.ocr import OcrService
 
 
 logging.basicConfig(level=logging.INFO)
@@ -28,8 +27,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup/shutdown events."""
     Base.metadata.create_all(bind=engine)
-    logger.info("Initializing OCR reader...")
-    OcrService.initialize()
     logger.info("Application ready")
     yield
     logger.info("Shutting down...")
