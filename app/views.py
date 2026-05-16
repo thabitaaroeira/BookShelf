@@ -209,4 +209,4 @@ def _render(template: str, request: Request, context: dict | None = None) -> HTM
     ctx: dict = {"request": request}
     if context:
         ctx.update(context)
-    return templates.TemplateResponse(template, ctx)
+    return templates.TemplateResponse(request, template, ctx)

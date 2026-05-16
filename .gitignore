@@ -30,3 +30,5 @@ books.db
 
 # Uploaded images
 uploads/
+
+tmp.log
