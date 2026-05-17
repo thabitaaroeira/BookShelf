@@ -34,9 +34,18 @@ def list_books(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/new", response_class=HTMLResponse)
-def new_book_form(request: Request):
-    """Show form for adding a new book."""
-    return _render("partials/book_form.html", request)
+def new_book_form(
+    request: Request,
+    title: str = "",
+    author: str = "",
+    isbn: str = "",
+):
+    """Show form for adding a new book, optionally pre-filled from OCR."""
+    return _render("partials/book_form.html", request, {
+        "preset_title": title,
+        "preset_author": author,
+        "preset_isbn": isbn,
+    })
 
 
 @router.get("/{book_id}/edit", response_class=HTMLResponse)

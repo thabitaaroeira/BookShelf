@@ -27,13 +27,11 @@
                 {% if book.isbn %}
                 <span class="book-isbn">ISBN: {{ book.isbn }}</span>
                 {% endif %}
-                <form hx-post="/books" hx-target="#book-list" hx-swap="innerHTML" style="margin-top:8px;"
-                      hx-on:htmx:after-request="if(!event.detail.failed) document.getElementById('modal').innerHTML = ''">
+                <form hx-get="/books/new" hx-target="#modal" hx-swap="innerHTML" style="margin-top:8px;">
                     <input type="hidden" name="title" value="{{ book.title }}">
                     <input type="hidden" name="author" value="{{ book.author }}">
                     {% if book.isbn %}<input type="hidden" name="isbn" value="{{ book.isbn }}">{% endif %}
-                    <input type="hidden" name="read" value="false">
-                    <button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt>Add to Library</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Review &amp; Add</button>
                 </form>
             </li>
             {% endfor %}
@@ -58,13 +56,11 @@
                 <p class="no-text">No text detected in this image.</p>
                 {% endif %}
                 {% if book.title and book.author %}
-                <form hx-post="/books" hx-target="#book-list" hx-swap="innerHTML" style="margin-top:8px;"
-                      hx-on:htmx:after-request="if(!event.detail.failed) document.getElementById('modal').innerHTML = ''">
+                <form hx-get="/books/new" hx-target="#modal" hx-swap="innerHTML" style="margin-top:8px;">
                     <input type="hidden" name="title" value="{{ book.title }}">
                     <input type="hidden" name="author" value="{{ book.author }}">
                     {% if book.isbn %}<input type="hidden" name="isbn" value="{{ book.isbn }}">{% endif %}
-                    <input type="hidden" name="read" value="false">
-                    <button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt>Add Anyway</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Review &amp; Add</button>
                 </form>
                 {% endif %}
             </li>
