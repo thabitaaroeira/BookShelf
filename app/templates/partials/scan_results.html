@@ -2,7 +2,7 @@
 <div class="alert alert-error">{{ error }}</div>
 <div class="form-actions">
     <button type="button" class="btn" hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML">
-        Close
+        Back
     </button>
 </div>
 {% else %}
@@ -27,7 +27,8 @@
                 {% if book.isbn %}
                 <span class="book-isbn">ISBN: {{ book.isbn }}</span>
                 {% endif %}
-                <form hx-post="/books" hx-target="#book-list" hx-swap="innerHTML" style="margin-top:8px;">
+                <form hx-post="/books" hx-target="#book-list" hx-swap="innerHTML" style="margin-top:8px;"
+                      hx-on:htmx:after-request="if(!event.detail.failed) document.getElementById('modal').innerHTML = ''">
                     <input type="hidden" name="title" value="{{ book.title }}">
                     <input type="hidden" name="author" value="{{ book.author }}">
                     {% if book.isbn %}<input type="hidden" name="isbn" value="{{ book.isbn }}">{% endif %}
@@ -57,7 +58,8 @@
                 <p class="no-text">No text detected in this image.</p>
                 {% endif %}
                 {% if book.title and book.author %}
-                <form hx-post="/books" hx-target="#book-list" hx-swap="innerHTML" style="margin-top:8px;">
+                <form hx-post="/books" hx-target="#book-list" hx-swap="innerHTML" style="margin-top:8px;"
+                      hx-on:htmx:after-request="if(!event.detail.failed) document.getElementById('modal').innerHTML = ''">
                     <input type="hidden" name="title" value="{{ book.title }}">
                     <input type="hidden" name="author" value="{{ book.author }}">
                     {% if book.isbn %}<input type="hidden" name="isbn" value="{{ book.isbn }}">{% endif %}
@@ -73,7 +75,7 @@
     
     <div class="form-actions">
         <button type="button" class="btn" hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML">
-            Close
+            Cancel
         </button>
         <button type="button" class="btn btn-secondary" hx-get="/books" hx-target="#main-content" hx-swap="innerHTML">
             View Library
