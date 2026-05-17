@@ -139,48 +139,27 @@ def scan_page(request: Request):
 async def process_scan(
     request: Request,
     files: List[UploadFile] = File(...),
-    db: Session = Depends(get_db)
 ):
     """
     Process uploaded book spine images.
     
-    Saves files securely, runs OCR, creates book records,
-    and returns results showing successful imports and
-    items needing review.
+    Runs OCR and shows results without saving anything.
+    The user can then import individual results.
     """
     try:
         image_paths = await save_multiple_uploads(files)
     except UploadError as e:
         return _render("partials/scan_results.html", request, {
             "error": str(e),
-            "results": [],
-            "needs_review": []
         })
     
     if not image_paths:
         return _render("partials/scan_results.html", request, {
             "error": "No valid image files provided",
-            "results": [],
-            "needs_review": []
         })
     
     result = OcrService.process_batch([str(p) for p in image_paths])
-    
-    imported_books = []
-    for ocr_result in result.successful + result.needs_review:
-        if ocr_result.title and ocr_result.author:
-            book = Book(
-                title=ocr_result.title,
-                author=ocr_result.author,
-                isbn=ocr_result.isbn,
-                needs_review=ocr_result.needs_review
-            )
-            db.add(book)
-            imported_books.append(book)
-    
-    db.commit()
-    for book in imported_books:
-        db.refresh(book)
+    all_results = result.successful + result.needs_review
     
     logger.info(
         f"Scan complete: {len(result.successful)} successful, "
@@ -191,7 +170,6 @@ async def process_scan(
         "results": result.successful,
         "needs_review": result.needs_review,
         "total": result.total_processed,
-        "imported": len(imported_books)
     })
 
 

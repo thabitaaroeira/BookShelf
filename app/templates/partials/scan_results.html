@@ -1,11 +1,15 @@
 {% if error %}
 <div class="alert alert-error">{{ error }}</div>
+<div class="form-actions">
+    <button type="button" class="btn" hx-get="/books/close-modal" hx-target="#modal" hx-swap="innerHTML">
+        Close
+    </button>
+</div>
 {% else %}
 <div class="scan-results">
     <h3>Scan Results</h3>
     <p class="summary">
-        <strong>{{ total }}</strong> images processed | 
-        <strong>{{ imported }}</strong> books imported
+        <strong>{{ total }}</strong> images processed
     </p>
     
     {% if not results and not needs_review %}
@@ -14,7 +18,7 @@
     
     {% if results %}
     <div class="result-section success">
-        <h4>Successfully Scanned ({{ results|length }})</h4>
+        <h4>Detected Books ({{ results|length }})</h4>
         <ul class="book-list">
             {% for book in results %}
             <li class="book-item">
@@ -23,6 +27,13 @@
                 {% if book.isbn %}
                 <span class="book-isbn">ISBN: {{ book.isbn }}</span>
                 {% endif %}
+                <form hx-post="/books" hx-target="#book-list" hx-swap="innerHTML" style="margin-top:8px;">
+                    <input type="hidden" name="title" value="{{ book.title }}">
+                    <input type="hidden" name="author" value="{{ book.author }}">
+                    {% if book.isbn %}<input type="hidden" name="isbn" value="{{ book.isbn }}">{% endif %}
+                    <input type="hidden" name="read" value="false">
+                    <button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt>Add to Library</button>
+                </form>
             </li>
             {% endfor %}
         </ul>
@@ -31,7 +42,7 @@
     
     {% if needs_review %}
     <div class="result-section needs-review">
-        <h4>Needs Review ({{ needs_review|length }})</h4>
+        <h4>Uncertain Results ({{ needs_review|length }})</h4>
         <ul class="book-list">
             {% for book in needs_review %}
             <li class="book-item">
@@ -45,14 +56,18 @@
                 {% else %}
                 <p class="no-text">No text detected in this image.</p>
                 {% endif %}
+                {% if book.title and book.author %}
+                <form hx-post="/books" hx-target="#book-list" hx-swap="innerHTML" style="margin-top:8px;">
+                    <input type="hidden" name="title" value="{{ book.title }}">
+                    <input type="hidden" name="author" value="{{ book.author }}">
+                    {% if book.isbn %}<input type="hidden" name="isbn" value="{{ book.isbn }}">{% endif %}
+                    <input type="hidden" name="read" value="false">
+                    <button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt>Add Anyway</button>
+                </form>
+                {% endif %}
             </li>
             {% endfor %}
         </ul>
-        <p class="review-note">
-            <a href="/books/review" hx-get="/books/review" hx-target="#modal" hx-swap="innerHTML">
-                Review incomplete entries
-            </a>
-        </p>
     </div>
     {% endif %}
     
