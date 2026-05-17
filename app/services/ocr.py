@@ -74,20 +74,21 @@ class OcrService:
         return cls._reader
     
     @classmethod
-    def _resize_if_needed(cls, image_path: str) -> str:
-        """Resize large images to improve OCR performance."""
+    def _preprocess_image(cls, image_path: str) -> str:
+        """Resize large images and gently enhance for better OCR."""
         MAX_DIM = 1920
-        img = Image.open(image_path)
+        img = Image.open(image_path).convert("L")
         w, h = img.size
-        if max(w, h) <= MAX_DIM:
-            return image_path
-        ratio = MAX_DIM / max(w, h)
-        new_size = (int(w * ratio), int(h * ratio))
-        img = img.resize(new_size, Image.LANCZOS)
+        if max(w, h) > MAX_DIM:
+            ratio = MAX_DIM / max(w, h)
+            new_size = (int(w * ratio), int(h * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+        from PIL import ImageEnhance
+        img = ImageEnhance.Contrast(img).enhance(1.5)
         resized_path = image_path.rsplit(".", 1)
-        out_path = f"{resized_path[0]}_resized.{resized_path[1]}"
+        out_path = f"{resized_path[0]}_processed.{resized_path[1]}"
         img.save(out_path)
-        logger.info(f"Resized {image_path} ({w}x{h}) -> {out_path} ({new_size[0]}x{new_size[1]})")
+        logger.info(f"Preprocessed {image_path} ({w}x{h}) -> {out_path}")
         return out_path
 
     @classmethod
@@ -101,25 +102,25 @@ class OcrService:
         Returns:
             OcrResult with extracted data and metadata
         """
-        processed_path = cls._resize_if_needed(image_path)
+        processed_path = cls._preprocess_image(image_path)
         reader = cls.get_reader()
         
         try:
             results = reader.readtext(processed_path)
         except Exception as e:
             logger.error(f"OCR failed for {image_path}: {e}")
-            if processed_path != image_path:
-                os.unlink(processed_path)
             return OcrResult(
                 raw_text="",
                 needs_review=True,
                 image_path=image_path
             )
         
-        if processed_path != image_path:
-            os.unlink(processed_path)
-        
         if not results:
+            return OcrResult(
+                raw_text="",
+                needs_review=True,
+                image_path=image_path
+            )
         
         text_blocks = []
         raw_texts = []
@@ -142,9 +143,11 @@ class OcrService:
         parsed = cls._parse_text_blocks(text_blocks)
         parsed.confidence = avg_confidence
         
+        title_ok = parsed.title and len(parsed.title) >= 2 and re.search(r'[A-Za-zÀ-ÿ]', parsed.title)
+        author_ok = parsed.author and len(parsed.author) >= 2 and re.search(r'[A-Za-zÀ-ÿ]', parsed.author)
         needs_review = (
-            parsed.title is None or 
-            parsed.author is None or 
+            not title_ok or
+            not author_ok or
             avg_confidence < 0.5
         )
         
@@ -261,14 +264,42 @@ class OcrService:
         return title, author
     
     @classmethod
+    def _looks_like_name(cls, text: str) -> bool:
+        """Check if text looks like an author name (e.g. 'Agatha Christie' or 'AgathaChristie')."""
+        text = text.strip()
+        if not text:
+            return False
+
+        parts = text.split()
+        if len(parts) == 2:
+            return (
+                all(p[0].isupper() for p in parts if p)
+                and len(parts[0]) >= 2
+                and len(parts[1]) >= 2
+            )
+
+        if len(parts) == 1 and len(text) >= 5:
+            uc_positions = [i for i, c in enumerate(text) if c.isupper()]
+            if len(uc_positions) >= 2:
+                splits = []
+                for i, pos in enumerate(uc_positions):
+                    end = uc_positions[i + 1] if i + 1 < len(uc_positions) else len(text)
+                    splits.append(text[pos:end])
+                if len(splits) == 2 and all(len(s) >= 2 for s in splits):
+                    return True
+
+        return False
+
+    @classmethod
     def _apply_title_heuristics(cls, texts: list[str]) -> dict:
         """
         Apply heuristics to guess title and author from text blocks.
         
         Strategy:
+        - If a block looks like a name (First Last), it's the author
         - Single text: treat as title only
-        - Two texts: longer is title, shorter is author
-        - Multiple texts: use length-based heuristics
+        - Two texts: if one looks like a name, it's author
+        - Multiple texts: pick name-like blocks as author, rest as title
         
         Args:
             texts: List of text blocks
@@ -276,6 +307,14 @@ class OcrService:
         Returns:
             Dict with 'title' and 'author' keys
         """
+        name_blocks = [t for t in texts if cls._looks_like_name(t)]
+        other_blocks = [t for t in texts if not cls._looks_like_name(t)]
+        
+        if name_blocks:
+            author = name_blocks[0]
+            title = ' '.join(other_blocks) if other_blocks else None
+            return {'title': title, 'author': author}
+        
         if len(texts) == 1:
             return {'title': texts[0], 'author': None}
         
