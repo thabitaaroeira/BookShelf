@@ -15,6 +15,7 @@ from typing import Optional
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
+import numpy as np
 from PIL import Image
 
 import easyocr
@@ -49,7 +50,18 @@ class OcrService:
     """
     
     _reader: Optional[easyocr.Reader] = None
-    
+
+    # Book-spine photos often arrive sideways (text runs along the spine).
+    # OCR the base image first; if too little readable text is found, retry
+    # at 90/180/270 degrees and keep the orientation with the most text.
+    AUTO_ROTATE: bool = os.environ.get("OCR_AUTO_ROTATE", "1") not in {"0", "false", "False"}
+    ROTATION_TEXT_THRESHOLD: float = 5.0
+
+    # Words that signal the following/adjacent text is the author.
+    AUTHOR_INDICATOR_WORDS = {
+        "by", "written by", "author", "por", "escrito por", "autor", "autoria",
+    }
+
     @classmethod
     def initialize(cls, languages: list[str] = None, gpu: bool = False) -> None:
         """
@@ -103,10 +115,11 @@ class OcrService:
             OcrResult with extracted data and metadata
         """
         processed_path = cls._preprocess_image(image_path)
-        reader = cls.get_reader()
-        
+
         try:
-            results = reader.readtext(processed_path)
+            results, angle = cls._readtext_with_orientation(processed_path)
+            if angle:
+                logger.info(f"Auto-rotated image by {angle} degrees for OCR")
         except Exception as e:
             logger.error(f"OCR failed for {image_path}: {e}")
             return OcrResult(
@@ -160,7 +173,65 @@ class OcrService:
             needs_review=needs_review,
             image_path=image_path
         )
-    
+
+    @classmethod
+    def _score_results(cls, results: list) -> float:
+        """Score OCR results by amount of readable text weighted by confidence."""
+        score = 0.0
+        for item in results:
+            text = item[1] if len(item) > 1 else ""
+            confidence = item[2] if len(item) > 2 else 0.0
+            score += sum(c.isalpha() for c in str(text)) * float(confidence)
+        return score
+
+    @classmethod
+    def _readtext_with_orientation(cls, image_path: str) -> tuple[list, int]:
+        """
+        Run OCR, auto-detecting image orientation.
+
+        Tries the original orientation first. If too little readable text is
+        found (common for sideways book-spine photos), retries at 90/180/270
+        degrees and returns the results with the highest text score.
+
+        Returns:
+            Tuple of (results, angle) where angle is 0 for the original.
+        """
+        reader = cls.get_reader()
+        img = Image.open(image_path).convert("RGB")
+        results = reader.readtext(np.array(img))
+
+        if not cls.AUTO_ROTATE:
+            return results, 0
+
+        best_score = cls._score_results(results)
+        best = (best_score, 0, results)
+
+        if best_score < cls.ROTATION_TEXT_THRESHOLD:
+            for angle in (90, 180, 270):
+                try:
+                    rotated = np.array(img.rotate(angle, expand=True))
+                    rotated_results = reader.readtext(rotated)
+                except Exception as e:
+                    logger.warning(f"Rotation {angle} OCR failed: {e}")
+                    continue
+                score = cls._score_results(rotated_results)
+                if score > best[0]:
+                    best = (score, angle, rotated_results)
+
+        return best[2], best[1]
+
+    @staticmethod
+    def _bbox_height(bbox) -> Optional[float]:
+        """Return the pixel height of a bounding box, or None if unavailable."""
+        if not bbox:
+            return None
+        try:
+            ys = [float(point[1]) for point in bbox]
+        except (TypeError, IndexError, ValueError):
+            return None
+        height = max(ys) - min(ys)
+        return height if height > 0 else None
+
     @classmethod
     def _parse_text_blocks(cls, blocks: list[dict]) -> ParsedBookInfo:
         """
@@ -176,7 +247,7 @@ class OcrService:
         full_text = ' '.join(texts)
         
         isbn = cls._extract_isbn(full_text)
-        title, author = cls._extract_title_author(texts)
+        title, author = cls._extract_title_author_from_blocks(blocks)
         
         return ParsedBookInfo(
             title=title,
@@ -218,65 +289,141 @@ class OcrService:
     def _extract_title_author(cls, texts: list[str]) -> tuple[Optional[str], Optional[str]]:
         """
         Extract title and author from ordered text blocks.
-        
-        Looks for author indicators first, then falls back to
-        heuristics based on text length and position.
-        
+
+        Backwards-compatible wrapper that accepts plain strings. Prefer
+        `_extract_title_author_from_blocks` when bounding boxes are available.
+
         Args:
             texts: Ordered list of text blocks from OCR
-            
+
         Returns:
             Tuple of (title, author)
         """
-        if not texts:
+        blocks = [
+            {'text': t, 'bbox': None} if isinstance(t, str) else t
+            for t in texts
+        ]
+        return cls._extract_title_author_from_blocks(blocks)
+
+    @classmethod
+    def _extract_title_author_from_blocks(
+        cls, blocks: list[dict]
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Extract title and author from OCR blocks.
+
+        Strategy:
+        1. Explicit author indicators ("by", "author:", "por", ...).
+        2. Blocks that look like person names.
+        3. Geometry: on a book spine the title uses a larger font than the
+           author, so the smallest text block is the author. Falls back to
+           text-length heuristics when bounding boxes are unavailable.
+
+        Args:
+            blocks: List of dicts with 'text' and optional 'bbox' keys
+
+        Returns:
+            Tuple of (title, author)
+        """
+        items = []
+        for block in blocks:
+            text = (block.get('text') if isinstance(block, dict) else block) or ""
+            text = text.strip()
+            if not text:
+                continue
+            items.append({
+                'text': text,
+                'bbox': block.get('bbox') if isinstance(block, dict) else None,
+            })
+
+        if not items:
             return None, None
-        
-        author_indicators = ['by', 'written by', 'author:', 'author', '著', 'por', 'de:', 'autor:', 'autoria:', '-', '—', '–']
-        
-        title = None
-        author = None
-        title_end_idx = 0
-        
-        for i, text in enumerate(texts):
-            upper_text = text.upper()
-            
-            for indicator in author_indicators:
-                if indicator.upper() in upper_text:
-                    candidate_author = text.split(indicator, 1)[-1].strip()
-                    if candidate_author and len(candidate_author) > 1:
-                        author = candidate_author
-                        title_end_idx = i
-                        break
-            
-            if author:
-                break
-        
-        if author:
-            title = ' '.join(texts[:title_end_idx]) if title_end_idx > 0 else texts[0]
-        else:
-            heuristics = cls._apply_title_heuristics(texts)
-            title = heuristics.get('title')
-            author = heuristics.get('author')
-        
-        title = cls._clean_text(title) if title else None
-        author = cls._clean_text(author) if author else None
-        
-        return title, author
-    
+
+        indicator_title, indicator_author = cls._split_by_author_indicator(items)
+        if indicator_author:
+            title = cls._clean_text(indicator_title) if indicator_title else None
+            return title, cls._clean_text(indicator_author)
+
+        name_items = [it for it in items if cls._looks_like_name(it['text'])]
+        if name_items:
+            author_item = cls._pick_author_item(name_items)
+            title = ' '.join(it['text'] for it in items if it is not author_item) or None
+            return cls._clean_text(title) if title else None, cls._clean_text(author_item['text'])
+
+        heuristics = cls._apply_title_heuristics(items)
+        title = heuristics.get('title')
+        author = heuristics.get('author')
+        return (
+            cls._clean_text(title) if title else None,
+            cls._clean_text(author) if author else None,
+        )
+
+    @classmethod
+    def _split_by_author_indicator(
+        cls, items: list[dict]
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Detect author indicators such as a standalone "by" block or an inline
+        "by John Doe" / "Author: John Doe".
+
+        Returns:
+            Tuple of (title, author); (None, None) when no indicator is found.
+        """
+        inline_pattern = re.compile(
+            r'(?:^|[-–—:;,])\s*(written by|by|author|por|autor|autoria)\b\s*:?\s*',
+            re.IGNORECASE,
+        )
+
+        for i, item in enumerate(items):
+            text = item['text']
+            normalized = re.sub(
+                r'\s+', ' ', text.strip().strip('.:;,-–—').lower()
+            )
+
+            if normalized in cls.AUTHOR_INDICATOR_WORDS and i + 1 < len(items):
+                title = ' '.join(x['text'] for x in items[:i]) or None
+                return title, items[i + 1]['text']
+
+            match = inline_pattern.search(text)
+            if match:
+                prefix = text[:match.start()].strip(' :;,-–—')
+                remainder = text[match.end():].strip(' :;,-–—')
+                if remainder and len(remainder) > 1:
+                    title_parts = [x['text'] for x in items[:i]]
+                    if prefix:
+                        title_parts.append(prefix)
+                    title = ' '.join(title_parts) or None
+                    return title, remainder
+
+        return None, None
+
     @classmethod
     def _looks_like_name(cls, text: str) -> bool:
-        """Check if text looks like an author name (e.g. 'Agatha Christie' or 'AgathaChristie')."""
-        text = text.strip()
+        """
+        Check if text looks like an author name.
+
+        Handles "Agatha Christie", "James A. Michener", "F. Scott Fitzgerald"
+        and the CamelCase form "AgathaChristie".
+        """
+        text = text.strip().strip('.,;:')
         if not text:
             return False
 
+        def is_word(part: str) -> bool:
+            return len(part) >= 2 and part[0].isupper() and any(c.isalpha() for c in part)
+
+        def is_initial(part: str) -> bool:
+            core = part.strip('.')
+            return len(core) == 1 and core.isalpha() and core.isupper()
+
         parts = text.split()
+
         if len(parts) == 2:
-            return (
-                all(p[0].isupper() for p in parts if p)
-                and len(parts[0]) >= 2
-                and len(parts[1]) >= 2
-            )
+            return is_word(parts[0]) and is_word(parts[1])
+
+        if 2 <= len(parts) <= 4:
+            if all(is_word(p) or is_initial(p) for p in parts) and any(is_initial(p) for p in parts):
+                return True
 
         if len(parts) == 1 and len(text) >= 5:
             uc_positions = [i for i, c in enumerate(text) if c.isupper()]
@@ -291,60 +438,60 @@ class OcrService:
         return False
 
     @classmethod
-    def _apply_title_heuristics(cls, texts: list[str]) -> dict:
+    def _pick_author_item(cls, name_items: list[dict]) -> dict:
+        """Choose the most likely author among name-like blocks."""
+        if len(name_items) == 1:
+            return name_items[0]
+        heights = [cls._bbox_height(it['bbox']) for it in name_items]
+        if all(heights):
+            return min(name_items, key=lambda it: cls._bbox_height(it['bbox']))
+        return name_items[-1]
+
+    @classmethod
+    def _apply_title_heuristics(cls, items: list[dict]) -> dict:
         """
-        Apply heuristics to guess title and author from text blocks.
-        
-        Strategy:
-        - If a block looks like a name (First Last), it's the author
-        - Single text: treat as title only
-        - Two texts: if one looks like a name, it's author
-        - Multiple texts: pick name-like blocks as author, rest as title
-        
+        Apply heuristics to guess title and author when no author indicator or
+        name-like block is found.
+
+        Uses bounding-box height when available (smallest font = author) and
+        falls back to text length otherwise.
+
         Args:
-            texts: List of text blocks
-            
+            items: List of dicts with 'text' and optional 'bbox' keys
+
         Returns:
             Dict with 'title' and 'author' keys
         """
-        name_blocks = [t for t in texts if cls._looks_like_name(t)]
-        other_blocks = [t for t in texts if not cls._looks_like_name(t)]
-        
-        if name_blocks:
-            author = name_blocks[0]
-            title = ' '.join(other_blocks) if other_blocks else None
-            return {'title': title, 'author': author}
-        
-        if len(texts) == 1:
-            return {'title': texts[0], 'author': None}
-        
-        if len(texts) == 2:
-            if len(texts[0]) > len(texts[1]):
-                return {'title': texts[0], 'author': texts[1]}
-            return {'title': texts[1], 'author': texts[0]}
-        
-        first_is_long = len(texts[0]) > 30
-        second_is_short = len(texts[1]) < 20
-        
-        if first_is_long and second_is_short:
-            return {'title': texts[0], 'author': texts[1]}
-        elif not first_is_long:
-            return {
-                'title': ' '.join(texts[:2]),
-                'author': texts[2] if len(texts) > 2 else None
-            }
-        
-        title_candidates = [(len(t), t) for t in texts if len(t) > 40]
-        author_candidates = [(len(t), t) for t in texts if 3 < len(t) < 25]
-        
-        title_candidates.sort(reverse=True)
-        author_candidates.sort(reverse=True)
-        
-        return {
-            'title': title_candidates[0][1] if title_candidates else None,
-            'author': author_candidates[0][1] if author_candidates else None
-        }
-    
+        if len(items) == 1:
+            return {'title': items[0]['text'], 'author': None}
+
+        heights = [cls._bbox_height(it['bbox']) for it in items]
+        has_geometry = all(heights)
+
+        if len(items) == 2:
+            if has_geometry:
+                h0, h1 = heights
+                largest = max(h0, h1)
+                if largest > 0 and abs(h0 - h1) / largest > 0.15:
+                    author_idx = 0 if h0 < h1 else 1
+                    title_idx = 1 - author_idx
+                    return {
+                        'title': items[title_idx]['text'],
+                        'author': items[author_idx]['text'],
+                    }
+            if len(items[0]['text']) > len(items[1]['text']):
+                return {'title': items[0]['text'], 'author': items[1]['text']}
+            return {'title': items[1]['text'], 'author': items[0]['text']}
+
+        alpha_items = [it for it in items if re.search(r'[A-Za-zÀ-ÿ]', it['text'])]
+        if has_geometry and alpha_items:
+            author_item = min(alpha_items, key=lambda it: cls._bbox_height(it['bbox']))
+        else:
+            author_item = min(items, key=lambda it: len(it['text']))
+
+        title = ' '.join(it['text'] for it in items if it is not author_item) or None
+        return {'title': title, 'author': author_item['text']}
+
     @classmethod
     def _clean_text(cls, text: str) -> str:
         """

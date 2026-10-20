@@ -117,6 +117,23 @@ class TestTitleAuthorExtraction:
         title, author = OcrService._extract_title_author(texts)
         assert "Book Title" in title or title is not None
 
+    def test_name_with_middle_initial_is_author(self):
+        """A name with a middle initial should be detected as the author."""
+        texts = ["HAVAI", "James A. Michener"]
+        title, author = OcrService._extract_title_author(texts)
+        assert author == "James A. Michener"
+        assert title == "HAVAI"
+
+    def test_smaller_font_block_is_author(self):
+        """Geometry: the smaller-font block is the author, not the title."""
+        blocks = [
+            {"text": "Michener", "bbox": [[0, 0], [80, 0], [80, 15], [0, 15]]},
+            {"text": "HAVAI", "bbox": [[0, 30], [200, 30], [200, 70], [0, 70]]},
+        ]
+        title, author = OcrService._extract_title_author_from_blocks(blocks)
+        assert author == "Michener"
+        assert title == "HAVAI"
+
 
 class TestTextCleaning:
     """Tests for text cleaning."""
@@ -185,59 +202,101 @@ class TestOcrService:
             # Should only be called once
             assert mock_reader.call_count == 1
 
-    @patch.object(OcrService, 'get_reader')
-    def test_process_image_empty_result(self, mock_get_reader):
+    @patch.object(OcrService, '_preprocess_image', return_value="fake_path.jpg")
+    @patch.object(OcrService, '_readtext_with_orientation', return_value=([], 0))
+    def test_process_image_empty_result(self, mock_read, mock_preprocess):
         """Empty OCR results should return needs_review=True."""
-        mock_reader = MagicMock()
-        mock_reader.readtext.return_value = []
-        mock_get_reader.return_value = mock_reader
-        
         result = OcrService.process_image("fake_path.jpg")
-        
+
         assert result.needs_review is True
         assert result.title is None
         assert result.raw_text == ""
 
-    @patch.object(OcrService, 'get_reader')
-    def test_process_image_with_results(self, mock_get_reader):
+    @patch.object(OcrService, '_preprocess_image', return_value="fake_path.jpg")
+    @patch.object(OcrService, '_readtext_with_orientation')
+    def test_process_image_with_results(self, mock_read, mock_preprocess):
         """OCR results should be parsed correctly."""
-        mock_reader = MagicMock()
-        mock_reader.readtext.return_value = [
-            ([[0, 0], [100, 0], [100, 20], [0, 20]], "The Great Gatsby", 0.95),
-            ([[0, 25], [100, 25], [100, 45], [0, 45]], "F. Scott Fitzgerald", 0.90),
-        ]
-        mock_get_reader.return_value = mock_reader
-        
+        mock_read.return_value = (
+            [
+                ([[0, 0], [100, 0], [100, 20], [0, 20]], "The Great Gatsby", 0.95),
+                ([[0, 25], [100, 25], [100, 45], [0, 45]], "F. Scott Fitzgerald", 0.90),
+            ],
+            0,
+        )
+
         result = OcrService.process_image("fake_path.jpg")
-        
+
         assert result.raw_text == "The Great Gatsby F. Scott Fitzgerald"
         assert 0.9 <= result.confidence <= 0.95
 
-    @patch.object(OcrService, 'get_reader')
-    def test_process_image_low_confidence_flags_review(self, mock_get_reader):
+    @patch.object(OcrService, '_preprocess_image', return_value="fake_path.jpg")
+    @patch.object(OcrService, '_readtext_with_orientation')
+    def test_process_image_low_confidence_flags_review(self, mock_read, mock_preprocess):
         """Low confidence results should flag needs_review."""
-        mock_reader = MagicMock()
-        mock_reader.readtext.return_value = [
-            ([[0, 0], [100, 0], [100, 20], [0, 20]], "Title", 0.3),
-            ([[0, 25], [100, 25], [100, 45], [0, 45]], "Author", 0.3),
-        ]
-        mock_get_reader.return_value = mock_reader
-        
+        mock_read.return_value = (
+            [
+                ([[0, 0], [100, 0], [100, 20], [0, 20]], "Title", 0.3),
+                ([[0, 25], [100, 25], [100, 45], [0, 45]], "Author", 0.3),
+            ],
+            0,
+        )
+
         result = OcrService.process_image("fake_path.jpg")
-        
+
         assert result.needs_review is True
 
-    @patch.object(OcrService, 'get_reader')
-    def test_process_image_ocr_error_handling(self, mock_get_reader):
+    @patch.object(OcrService, '_preprocess_image', return_value="fake_path.jpg")
+    @patch.object(OcrService, '_readtext_with_orientation', side_effect=Exception("OCR failed"))
+    def test_process_image_ocr_error_handling(self, mock_read, mock_preprocess):
         """OCR errors should be handled gracefully."""
-        mock_reader = MagicMock()
-        mock_reader.readtext.side_effect = Exception("OCR failed")
-        mock_get_reader.return_value = mock_reader
-        
         result = OcrService.process_image("fake_path.jpg")
-        
+
         assert result.needs_review is True
         assert result.raw_text == ""
+
+
+class TestAutoRotation:
+    """Tests for automatic orientation detection."""
+
+    def _write_image(self, tmp_path):
+        from PIL import Image
+        path = tmp_path / "spine.jpg"
+        Image.new("RGB", (40, 200), "white").save(path)
+        return str(path)
+
+    def test_rotates_when_base_has_little_text(self, tmp_path):
+        """Sideways images with little text should be retried at other angles."""
+        path = self._write_image(tmp_path)
+
+        class FakeReader:
+            def __init__(self):
+                self.calls = 0
+
+            def readtext(self, image):
+                self.calls += 1
+                if self.calls == 1:
+                    return [([[0, 0], [5, 0], [5, 5], [0, 5]], "|", 0.2)]
+                return [([[0, 0], [50, 0], [50, 20], [0, 20]], "James A. Michener", 0.9)]
+
+        fake = FakeReader()
+        with patch.object(OcrService, "get_reader", return_value=fake):
+            results, angle = OcrService._readtext_with_orientation(path)
+
+        assert angle in (90, 180, 270)
+        assert any("James" in text for _, text, _ in results)
+
+    def test_no_rotation_when_base_text_is_readable(self, tmp_path):
+        """Readable base orientation should not trigger extra OCR passes."""
+        path = self._write_image(tmp_path)
+        fake = MagicMock()
+        fake.readtext.return_value = [
+            ([[0, 0], [100, 0], [100, 20], [0, 20]], "The Great Gatsby", 0.95),
+        ]
+        with patch.object(OcrService, "get_reader", return_value=fake):
+            results, angle = OcrService._readtext_with_orientation(path)
+
+        assert angle == 0
+        fake.readtext.assert_called_once()
 
 
 class TestBatchProcessing:
